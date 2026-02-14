@@ -1,140 +1,72 @@
+
 import { auth } from "@/auth";
+import { redirect } from "next/navigation";
 import { connectToDatabase } from "@/lib/db";
 import Group from "@/models/Group";
 import GroupMember from "@/models/GroupMember";
+import LedgerEntry from "@/models/LedgerEntry";
 import User from "@/models/User";
-import mongoose from "mongoose";
-import { notFound, redirect } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
+import { Types } from "mongoose";
 
-interface UserRecord {
-  _id: mongoose.Types.ObjectId;
-  name: string;
-  email: string;
-  image?: string;
-}
-
-interface GroupRecord {
-  _id: mongoose.Types.ObjectId;
-  name: string;
-  token: string;
-  createdBy: mongoose.Types.ObjectId;
-}
-
-type MemberRole = "admin" | "member";
-
-interface GroupMemberRecord {
-  _id: mongoose.Types.ObjectId;
-  groupId: mongoose.Types.ObjectId;
-  userId: mongoose.Types.ObjectId;
-  role: MemberRole;
-  joinedAt: Date;
-}
-
-interface GroupMemberWithUserRecord {
-  _id: mongoose.Types.ObjectId;
-  groupId: mongoose.Types.ObjectId;
-  userId: Pick<UserRecord, "name" | "email" | "image"> | null;
-  role: MemberRole;
-  joinedAt: Date;
-}
-
-export default async function GroupPage({
-  params,
-}: {
+export default async function GroupPage(props: {
   params: Promise<{ groupId: string }>;
 }) {
-  const { groupId } = await params;
-
-  if (!groupId || !mongoose.Types.ObjectId.isValid(groupId)) {
-    return notFound();
-  }
+  const { groupId } = await props.params;
 
   const session = await auth();
+  if (!session?.user?.email) redirect("/");
 
-  if (!session?.user?.email) {
-    redirect("/api/auth/signin");
+  if (!Types.ObjectId.isValid(groupId)) {
+    return <div>Invalid group</div>;
   }
 
   await connectToDatabase();
 
-  const [dbUser, group] = await Promise.all([
-    User.findOne({ email: session.user.email }).lean<UserRecord | null>(),
-    Group.findById(groupId).lean<GroupRecord | null>(),
-  ]);
+  const user = await User.findOne({ email: session.user.email });
+  if (!user) return <div>User not found</div>;
 
-  if (!dbUser) return notFound();
-  if (!group) return notFound();
+  const objectId = new Types.ObjectId(groupId);
 
   const membership = await GroupMember.findOne({
-    groupId,
-    userId: dbUser._id,
-  }).lean<GroupMemberRecord | null>();
+    groupId: objectId,
+    userId: user._id,
+  });
 
-  if (!membership) {
-    return notFound();
-  }
+  if (!membership) return <div>Not allowed</div>;
 
-  const members = await GroupMember.find({
-    groupId,
-  })
-    .populate<{ userId: GroupMemberWithUserRecord["userId"] }>(
-      "userId",
-      "name email image"
-    )
-    .lean<GroupMemberWithUserRecord[]>();
+  const group = await Group.findById(objectId);
+
+  const members = await GroupMember.find({ groupId: objectId })
+    .populate("userId", "name email");
+
+  const balances = await LedgerEntry.aggregate([
+    { $match: { groupId: objectId } },
+    {
+      $group: {
+        _id: "$userId",
+        balance: { $sum: "$delta" },
+      },
+    },
+  ]);
 
   return (
-    <div className="min-h-screen bg-gray-100 p-10">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <Card className="rounded-2xl shadow-lg">
-          <CardContent className="p-6">
-            <h1 className="text-3xl font-bold">{group.name}</h1>
+    <div className="p-8">
+      <h1 className="text-2xl font-bold">{group?.name}</h1>
+      {members.map((member: any) => {
+        const balanceObj = balances.find(
+          (b: any) =>
+            b._id.toString() === member.userId._id.toString()
+        );
 
-            <p className="text-gray-500 mt-2">
-              Invite Token:
-              <span className="ml-2 font-mono bg-gray-200 px-2 py-1 rounded">
-                {group.token}
-              </span>
-            </p>
+        const balance = balanceObj ? balanceObj.balance : 0;
 
-            <p className="text-sm text-gray-400 mt-2">
-              Your role:
-              <span className="ml-2 font-semibold text-black">
-                {membership.role}
-              </span>
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl shadow-lg">
-          <CardContent className="p-6">
-            <h2 className="text-xl font-semibold mb-4">
-              Members ({members.length})
-            </h2>
-
-            <div className="space-y-3">
-              {members.map((member) => (
-                <div
-                  key={member._id.toString()}
-                  className="flex items-center justify-between bg-gray-50 p-4 rounded-lg "
-                >
-                  <div>
-                    <p className="font-medium text-lg">
-                      {member.userId?.name ?? "Unnamed User"}
-                    </p>
-                    <p className="text-sm text-gray-500">{member.userId?.email}</p>
-                  </div>
-
-                  <span className="text-sm bg-black text-white px-3 py-1 rounded-full">
-                    {member.role}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        return (
+          <div key={member._id} className="flex justify-between">
+            <span>{member.userId.name}</span>
+            <span>₹ {(balance / 100).toFixed(2)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

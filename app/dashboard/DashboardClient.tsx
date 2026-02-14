@@ -23,40 +23,26 @@ export default function DashboardClient({ user }: { user?: User | null }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
   const [token, setToken] = useState("");
-  const [generatedToken, setGeneratedToken] = useState("");
   const [groupName, setGroupName] = useState("");
+  const [joinLink, setJoinLink] = useState("");
   const [notification, setNotification] = useState("");
   const [loading, setLoading] = useState(false);
 
   // ---------- CREATE GROUP ----------
 
-  const generateToken = () => {
-    if (typeof crypto !== "undefined" && crypto.randomUUID) {
-      return crypto.randomUUID();
-    }
-    return Math.random().toString(36).substring(2, 10);
-  };
-
-  const createGroup = () => {
-    if (!groupName.trim()) return;
-    const newToken = generateToken();
-    setGeneratedToken(newToken);
-  };
-
   const confirmGroupCreation = async () => {
-    if (!groupName || !generatedToken) return;
+    if (!groupName.trim()) return;
 
     try {
       setLoading(true);
 
-      const res = await fetch("/api/creategroup", {
+      const res = await fetch("/api/groups", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           groupName,
-          token: generatedToken,
         }),
       });
 
@@ -64,15 +50,10 @@ export default function DashboardClient({ user }: { user?: User | null }) {
 
       const group = await res.json();
 
+      setJoinLink(group.joinLink);
+
       setNotification(`${groupName} created successfully 🎉`);
 
-      // Reset modal
-      setGroupName("");
-      setGeneratedToken("");
-      setCreateOpen(false);
-
-      // Redirect to group page
-        router.push(`/group/${group.groupId}`);
     } catch (err) {
       console.error(err);
       setNotification("Failed to create group");
@@ -82,17 +63,17 @@ export default function DashboardClient({ user }: { user?: User | null }) {
     }
   };
 
-  const copyToken = async () => {
+  const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(generatedToken);
-      setNotification("Token copied!");
+      await navigator.clipboard.writeText(joinLink);
+      setNotification("Invite link copied!");
       setTimeout(() => setNotification(""), 2000);
     } catch {
       console.warn("Clipboard not supported");
     }
   };
 
-  // ---------- JOIN GROUP ----------
+  // ---------- JOIN GROUP (Manual Token Optional) ----------
 
   const joinGroup = async () => {
     if (!token.trim()) return;
@@ -100,7 +81,7 @@ export default function DashboardClient({ user }: { user?: User | null }) {
     try {
       setLoading(true);
 
-      const res = await fetch("/api/joingroup", {
+      const res = await fetch("/api/groups/join-by-token", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -108,9 +89,7 @@ export default function DashboardClient({ user }: { user?: User | null }) {
         body: JSON.stringify({ token }),
       });
 
-      // Handle non-JSON responses safely
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : null;
+      const data = await res.json();
 
       if (!res.ok || !data?.groupId) {
         throw new Error("Invalid token");
@@ -131,8 +110,6 @@ export default function DashboardClient({ user }: { user?: User | null }) {
     }
   };
 
-  // ---------- GUARD ----------
-
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -140,8 +117,6 @@ export default function DashboardClient({ user }: { user?: User | null }) {
       </div>
     );
   }
-
-  // ---------- UI ----------
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 gap-4">
@@ -181,30 +156,26 @@ export default function DashboardClient({ user }: { user?: User | null }) {
                   onChange={(e) => setGroupName(e.target.value)}
                 />
 
-                <Button className="w-full" onClick={createGroup}>
-                  Generate Token
+                <Button
+                  className="w-full"
+                  onClick={confirmGroupCreation}
+                  disabled={loading}
+                >
+                  {loading ? "Creating..." : "Create Group"}
                 </Button>
 
-                {generatedToken && (
+                {joinLink && (
                   <>
                     <p className="text-sm text-gray-500">
-                      Share this token with friends:
+                      Share this invite link:
                     </p>
 
                     <div className="p-3 bg-gray-100 rounded-lg font-mono break-all">
-                      {generatedToken}
+                      {joinLink}
                     </div>
 
-                    <Button className="w-full" onClick={copyToken}>
-                      Copy Token
-                    </Button>
-
-                    <Button
-                      className="w-full"
-                      onClick={confirmGroupCreation}
-                      disabled={loading}
-                    >
-                      {loading ? "Creating..." : "Confirm Group Creation"}
+                    <Button className="w-full" onClick={copyLink}>
+                      Copy Invite Link
                     </Button>
                   </>
                 )}
@@ -212,7 +183,7 @@ export default function DashboardClient({ user }: { user?: User | null }) {
             </DialogContent>
           </Dialog>
 
-          {/* JOIN GROUP */}
+          {/* JOIN GROUP (Manual Token Fallback) */}
           <Button
             variant="outline"
             className="w-full text-lg py-6"
