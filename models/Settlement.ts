@@ -6,26 +6,23 @@ const SettlementSchema = new Schema(
       type: Types.ObjectId,
       ref: "Group",
       required: true,
-      index: true,
     },
 
     from: {
       type: Types.ObjectId,
       ref: "User",
       required: true,
-      index: true,
     },
 
     to: {
       type: Types.ObjectId,
       ref: "User",
       required: true,
-      index: true,
     },
 
     amount: {
       type: Number,
-      required: true, // paise
+      required: true,
       min: 1,
     },
 
@@ -42,17 +39,10 @@ const SettlementSchema = new Schema(
   { timestamps: true }
 );
 
-/*
-🔥 Compound Indexes for Fast Queries
-*/
+/* 🔥 Indexes */
 
-// Get all settlements inside a group
 SettlementSchema.index({ groupId: 1, createdAt: -1 });
-
-// Get settlements between two users in group
 SettlementSchema.index({ groupId: 1, from: 1, to: 1 });
-
-// For user activity history
 SettlementSchema.index({ from: 1 });
 SettlementSchema.index({ to: 1 });
 

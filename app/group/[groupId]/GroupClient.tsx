@@ -9,7 +9,12 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
 type Member = {
@@ -21,6 +26,20 @@ type Member = {
   balance: number;
 };
 
+type SettlementItem = {
+  from: string;
+  to: string;
+  amount: number;
+};
+
+type HistoryItem = {
+  type: "expense" | "settlement";
+  createdAt: string;
+  amount: number;
+  title: string;
+  user: string;
+};
+
 type Props = {
   group: {
     _id: string;
@@ -28,12 +47,16 @@ type Props = {
   };
   currentUserId: string;
   members: Member[];
+  history: HistoryItem[];
+  settlements: SettlementItem[];
 };
 
 export default function GroupClient({
   group,
   currentUserId,
   members,
+  history,
+  settlements,
 }: Props) {
   const router = useRouter();
 
@@ -81,7 +104,6 @@ export default function GroupClient({
       setDescription("");
       setExactAmounts({});
       router.refresh();
-
     } catch (err) {
       console.error(err);
     } finally {
@@ -93,6 +115,7 @@ export default function GroupClient({
     <div className="min-h-screen bg-muted/40 py-10 px-4">
       <div className="max-w-3xl mx-auto space-y-6">
 
+        {/* Group Header */}
         <Card>
           <CardHeader className="flex justify-between items-center">
             <CardTitle>{group.name}</CardTitle>
@@ -100,6 +123,7 @@ export default function GroupClient({
           </CardHeader>
         </Card>
 
+        {/* Members */}
         <Card>
           <CardHeader>
             <CardTitle>Members</CardTitle>
@@ -111,8 +135,54 @@ export default function GroupClient({
                   {member.name}
                   {member.userId === currentUserId && " (You)"}
                 </div>
-                <div>
-                  ₹ {(member.balance / 100).toFixed(2)}
+                <div>₹ {(member.balance / 100).toFixed(2)}</div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Who Pays Whom */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Who Pays Whom</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {settlements.length === 0 && <p>All settled up 🎉</p>}
+
+            {settlements.map((s, i) => (
+              <div key={i} className="border rounded p-3">
+                {s.from} pays {s.to} ₹ {(s.amount / 100).toFixed(2)}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* History */}
+        <Card>
+          <CardHeader>
+            <CardTitle>History</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {history.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No history yet.
+              </p>
+            )}
+
+            {history.map((item, i) => (
+              <div key={i} className="border rounded p-3">
+                <div className="font-medium">
+                  {item.type === "expense"
+                    ? `${item.user} added "${item.title}"`
+                    : item.title}
+                </div>
+
+                <div className="text-sm text-muted-foreground">
+                  ₹ {(item.amount / 100).toFixed(2)}
+                </div>
+
+                <div className="text-xs text-muted-foreground mt-1">
+                  {new Date(item.createdAt).toLocaleString()}
                 </div>
               </div>
             ))}
@@ -128,7 +198,6 @@ export default function GroupClient({
           </DialogHeader>
 
           <div className="space-y-4">
-
             <Input
               placeholder="Total Amount"
               type="number"
@@ -142,7 +211,6 @@ export default function GroupClient({
               onChange={(e) => setDescription(e.target.value)}
             />
 
-            {/* Split Type */}
             <div className="flex gap-4">
               <Button
                 variant={splitType === "equal" ? "default" : "outline"}
@@ -159,11 +227,9 @@ export default function GroupClient({
               </Button>
             </div>
 
-            {/* Members */}
             <div className="space-y-2">
               {members.map((member) => (
                 <div key={member.userId} className="flex items-center justify-between">
-
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -199,7 +265,6 @@ export default function GroupClient({
             >
               {loading ? "Creating..." : "Add Expense"}
             </Button>
-
           </div>
         </DialogContent>
       </Dialog>

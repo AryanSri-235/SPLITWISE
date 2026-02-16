@@ -1,12 +1,12 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { connectToDatabase } from "@/lib/db";
-import Group from "@/models/Group";
-import GroupMember from "@/models/GroupMember";
-import LedgerEntry from "@/models/LedgerEntry";
-import User from "@/models/User";
-import { Types } from "mongoose";
+import "@/models";
+import mongoose, { Types } from "mongoose";
 import GroupClient from "../[groupId]/GroupClient";
+import { getGroupHistory } from "@/lib/queries/group";
+import { simplifyDebts } from "@/lib/services/balance";
+
 
 export default async function GroupPage(props: {
   params: Promise<{ groupId: string }>;
@@ -21,6 +21,12 @@ export default async function GroupPage(props: {
   }
 
   await connectToDatabase();
+
+  // 🔥 models from mongoose registry
+  const User = mongoose.models.User;
+  const Group = mongoose.models.Group;
+  const GroupMember = mongoose.models.GroupMember;
+  const LedgerEntry = mongoose.models.LedgerEntry;
 
   const user = await User.findOne({
     email: session.user.email,
@@ -45,6 +51,7 @@ export default async function GroupPage(props: {
     .populate("userId", "name email")
     .lean();
 
+  // 🔥 BALANCES
   const balancesAgg = await LedgerEntry.aggregate([
     { $match: { groupId: objectId } },
     {
@@ -56,27 +63,39 @@ export default async function GroupPage(props: {
   ]);
 
   const balancesMap: Record<string, number> = {};
-  balancesAgg.forEach((b) => {
+  balancesAgg.forEach((b: any) => {
     balancesMap[b._id.toString()] = b.balance;
   });
 
   const formattedMembers = members.map((m: any) => ({
     _id: m._id.toString(),
     role: m.role,
-    name: m.userId.name,
-    email: m.userId.email,
-    userId: m.userId._id.toString(),
-    balance: balancesMap[m.userId._id.toString()] || 0,
+    name: m.userId?.name,
+    email: m.userId?.email,
+    userId: m.userId?._id?.toString(),
+    balance: balancesMap[m.userId?._id?.toString()] || 0,
   }));
+  const settlementsToShow = simplifyDebts(
+  formattedMembers.map((m) => ({
+    name: m.name,
+    balance: m.balance,
+  }))
+);
+
+
+  // ⭐ HISTORY FETCH (NEW)
+  const history = await getGroupHistory(groupId);
 
   return (
     <GroupClient
       group={{
-        _id: group?._id.toString(),
+        _id: group?._id?.toString(),
         name: group?.name,
       }}
       currentUserId={user._id.toString()}
       members={formattedMembers}
+      history={history}   // 🔥 pass to client
+      settlements={settlementsToShow}
     />
   );
 }
